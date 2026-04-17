@@ -11,18 +11,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,25 +39,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
 import com.example.parkme.R
-import com.example.parkme.navigation.AppScreens
+import com.example.parkme.viewmodel.AppViewModel
 
 @Composable
-fun SignUp(navController: NavController) {
+fun SignUp(navController: NavController, viewModel: AppViewModel) {
     var name by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var selectedRole by remember { mutableStateOf("Usuario") }
+    val authState by viewModel.authState.collectAsState()
+
 
     LazyColumn(
         modifier = Modifier
@@ -74,6 +75,13 @@ fun SignUp(navController: NavController) {
                     .width(400.dp),
                 contentScale = ContentScale.Fit
             )
+            if (authState.errorMessage != null) {
+                Text(
+                    text = authState.errorMessage!!,
+                    color = Color.Red,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
         }
         stickyHeader {
             Row {
@@ -215,7 +223,7 @@ fun SignUp(navController: NavController) {
                             fontWeight = FontWeight.ExtraBold
                         )
                     },
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), //ayuda pa que sirva el boton mostrar
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     trailingIcon = {
                         Text(
@@ -310,27 +318,28 @@ fun SignUp(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
+
             Button(
                 onClick = {
-                    navController.navigate("${AppScreens.IdentityVerification.name}/$selectedRole")
+                    viewModel.register(
+                        email,
+                        password,
+                        confirmPassword,
+                        name,
+                        lastName,
+                        phone,
+                        selectedRole
+                    )
                 },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colorResource(R.color.blue),
-                    contentColor = colorResource(R.color.white)
-                )
+                enabled = !authState.isLoading,
             ) {
-                Text("Continuar", modifier = Modifier.padding(vertical = 8.dp))
+                if (authState.isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                } else {
+                    Text("Continuar", modifier = Modifier.padding(vertical = 8.dp))
+                }
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
-}
-
-@Composable
-@Preview
-fun SignPreview() {
-    val navController = rememberNavController()
-    SignUp(navController = navController)
 }

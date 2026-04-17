@@ -1,27 +1,18 @@
 package com.example.parkme.navigation
 
-import androidx.compose.runtime.Composable
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.example.parkme.screens.ChatCliente
-import com.example.parkme.screens.ChatOperador
-import com.example.parkme.screens.CreateParkingVisual
-import com.example.parkme.screens.EditParkingVisual
-import com.example.parkme.screens.HomeOperator
-import com.example.parkme.screens.LogIn
-import com.example.parkme.screens.HomeUser
-import com.example.parkme.screens.SignUp
-import com.example.parkme.screens.IdentityVerification
-import com.example.parkme.screens.MyActivityOperator
-import com.example.parkme.screens.MyActivity
-import com.example.parkme.screens.MyActivityOperator
-import com.example.parkme.screens.OperatorProfile
-import com.example.parkme.screens.ParkingLotDetail
-import com.example.parkme.screens.RateParkingLot
-import com.example.parkme.screens.SearchFilters
-import com.example.parkme.screens.SearchMap
-import com.example.parkme.screens.UserProfile
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.navigation.compose.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.parkme.screens.*
+import com.example.parkme.viewmodel.AppViewModel
 
 enum class AppScreens {
     HomeUser,
@@ -36,8 +27,8 @@ enum class AppScreens {
     Operator,
     UserProfile,
     OperatorProfile,
-    HomeOperator, 
-    MyActivityOperator, 
+    HomeOperator,
+    MyActivityOperator,
     CreateParking,
     EditParking,
     ChatOp,
@@ -47,65 +38,91 @@ enum class AppScreens {
 @Composable
 fun Navigation() {
     val navController = rememberNavController()
+    val viewModel: AppViewModel = viewModel()
+    val authState by viewModel.authState.collectAsState()
+
+    if (authState.isCheckingSession) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val startRoute = when {
+        authState.isAuthenticated && authState.isVerified -> {
+            if (authState.userRole == "Operador") AppScreens.HomeOperator.name else AppScreens.HomeUser.name
+        }
+        authState.isAuthenticated && !authState.isVerified -> {
+            AppScreens.IdentityVerification.name
+        }
+        else -> AppScreens.LogIn.name
+    }
 
     NavHost(
         navController = navController,
-        startDestination = com.example.parkme.navigation.AppScreens.LogIn.name
+        startDestination = startRoute,
+        enterTransition = { fadeIn(animationSpec = tween(0)) },
+        exitTransition = { fadeOut(animationSpec = tween(0)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(0)) },
+        popExitTransition = { fadeOut(animationSpec = tween(0)) }
     ) {
-        composable(route = AppScreens.LogIn.name) {
-            LogIn(navController)
-        }
-        composable(route = AppScreens.HomeUser.name) {
-            HomeUser(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.SignUp.name) {
-            SignUp(navController)
-        }
-        composable("${AppScreens.IdentityVerification.name}/{role}") { backStackEntry ->
-            val role = backStackEntry.arguments?.getString("role")
 
-            IdentityVerification(navController = navController, selectedRole = role)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.SearchMap.name) {
-            SearchMap(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.SearchFilters.name) {
-            SearchFilters()
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.RateParkingLot.name) {
-            RateParkingLot(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.MyActivity.name) {
-            MyActivity(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.UserProfile.name) {
-            UserProfile(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.OperatorProfile.name) {
-            OperatorProfile(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.ParkingLotDetail.name) {
-            ParkingLotDetail(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.HomeOperator.name) {
-            HomeOperator(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.MyActivityOperator.name) {
-            MyActivityOperator(navController)
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.CreateParking.name) {
-            CreateParkingVisual()
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.EditParking.name) {
-            EditParkingVisual()
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.ChatOp.name) {
-            ChatOperador()
-        }
-        composable(route = com.example.parkme.navigation.AppScreens.ChatCli.name) {
-            ChatCliente()
-        }
-        
+        composable(AppScreens.LogIn.name) { LogIn(navController, viewModel) }
+        composable(AppScreens.SignUp.name) { SignUp(navController, viewModel) }
+        composable(AppScreens.IdentityVerification.name) { IdentityVerification(navController, viewModel) }
+        composable(AppScreens.HomeUser.name) { HomeUser(navController) }
+        composable(AppScreens.HomeOperator.name) { HomeOperator(navController) }
+        composable(AppScreens.SearchMap.name) { SearchMap(navController) }
+        composable(AppScreens.SearchFilters.name) { SearchFilters() }
+        composable(AppScreens.RateParkingLot.name) { RateParkingLot(navController) }
+        composable(AppScreens.MyActivity.name) { MyActivity(navController) }
+        composable(AppScreens.UserProfile.name) { ProfileScreen(navController, viewModel) }
+        composable(AppScreens.OperatorProfile.name) { ProfileScreen(navController, viewModel) }
+        composable(AppScreens.ParkingLotDetail.name) { ParkingLotDetail(navController) }
+        composable(AppScreens.MyActivityOperator.name) { MyActivityOperator(navController) }
+        composable(AppScreens.CreateParking.name) { CreateParkingVisual() }
+        composable(AppScreens.EditParking.name) { EditParkingVisual() }
+        composable(AppScreens.ChatOp.name) { ChatOperador() }
+        composable(AppScreens.ChatCli.name) { ChatCliente() }
+    }
 
+    LaunchedEffect(
+        authState.isAuthenticated,
+        authState.isVerified,
+        authState.isLoading,
+        authState.userRole
+    ) {
+        if (authState.isLoading) return@LaunchedEffect
+
+        val currentRoute = navController.currentBackStackEntry?.destination?.route
+
+        when {
+            authState.isAuthenticated && !authState.isVerified -> {
+                if (currentRoute != AppScreens.IdentityVerification.name) {
+                    navController.navigate(AppScreens.IdentityVerification.name) { popUpTo(0) }
+                }
+            }
+
+            authState.isAuthenticated && authState.isVerified -> {
+                val destination = if (authState.userRole == "Operador") {
+                    AppScreens.HomeOperator.name
+                } else {
+                    AppScreens.HomeUser.name
+                }
+
+                if (currentRoute != destination) {
+                    navController.navigate(destination) { popUpTo(0) }
+                }
+            }
+
+            !authState.isAuthenticated -> {
+                if (currentRoute != AppScreens.LogIn.name && currentRoute != AppScreens.SignUp.name) {
+                    navController.navigate(AppScreens.LogIn.name) { popUpTo(0) }
+                }
+            }
+        }
     }
 }

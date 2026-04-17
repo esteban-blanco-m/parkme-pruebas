@@ -1,5 +1,7 @@
 package com.example.parkme.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +24,7 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.parkme.viewmodel.AppViewModel
+
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -43,10 +48,19 @@ import com.example.parkme.R
 import com.example.parkme.navigation.AppScreens
 
 @Composable
-fun IdentityVerification(navController: NavController, selectedRole: String?) {
+fun IdentityVerification(navController: NavController, viewModel : AppViewModel) {
     val scrollState = rememberScrollState()
     var selectedDocument by remember { mutableStateOf("Cedula") }
+    val authState by viewModel.authState.collectAsState()
+    val selectedRole = authState.userRole
 
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            viewModel.verifyUser()
+        }
+    }
     Column(
         modifier = Modifier
             .background(color = colorResource(R.color.back))
@@ -72,6 +86,23 @@ fun IdentityVerification(navController: NavController, selectedRole: String?) {
             fontSize = 32.sp,
             lineHeight = 36.sp
         )
+        when {
+            authState.isLoading -> {
+                Text("Verificando...")
+            }
+
+            authState.isVerified -> {
+                Text("Verificado")
+            }
+
+            else -> {
+                Button(onClick = {
+                    launcher.launch(null)
+                }) {
+                    Text("Verificar identidad")
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -106,9 +137,12 @@ fun IdentityVerification(navController: NavController, selectedRole: String?) {
                 shadowElevation = 2.dp,
                 modifier = Modifier.padding(end = 16.dp)
             ) {
+
+
                 RadioButton(
                     selected = selectedDocument == "Cedula",
-                    onClick = { selectedDocument = "Cedula" },
+                    onClick = {launcher.launch(null)
+                        selectedDocument = "Cedula" },
                     colors = RadioButtonDefaults.colors(
                         selectedColor = colorResource(R.color.blue),
                         unselectedColor = Color.Transparent
@@ -145,7 +179,8 @@ fun IdentityVerification(navController: NavController, selectedRole: String?) {
             ) {
                 RadioButton(
                     selected = selectedDocument == "Pasaporte",
-                    onClick = { selectedDocument = "Pasaporte" },
+                    onClick = { launcher.launch(null)
+                        selectedDocument = "Pasaporte" },
                     colors = RadioButtonDefaults.colors(
                         selectedColor = colorResource(R.color.blue),
                         unselectedColor = Color.Transparent
@@ -173,13 +208,10 @@ fun IdentityVerification(navController: NavController, selectedRole: String?) {
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
+
             Button(
                 onClick = {
-                    if (selectedRole == "Usuario") {
-                        navController.navigate(AppScreens.HomeUser.name)
-                    } else {
-                        navController.navigate(AppScreens.HomeOperator.name)
-                    }
+                    viewModel.verifyUser()
                 },
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
@@ -191,20 +223,14 @@ fun IdentityVerification(navController: NavController, selectedRole: String?) {
                 )
             ) {
                 Text(
-                    text = "Completar Registro",
+                    "Verificar identidad",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
+
         }
 
         Spacer(modifier = Modifier.height(16.dp))
     }
-}
-
-@Composable
-@Preview
-fun IdentityPreview() {
-    val navController = rememberNavController()
-    IdentityVerification(navController = navController, selectedRole = "Usuario")
 }
