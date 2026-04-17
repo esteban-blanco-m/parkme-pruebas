@@ -37,15 +37,16 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.parkme.viewmodel.AppViewModel
-
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
 import com.example.parkme.R
-import com.example.parkme.navigation.AppScreens
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun IdentityVerification(navController: NavController, viewModel : AppViewModel) {
@@ -53,14 +54,19 @@ fun IdentityVerification(navController: NavController, viewModel : AppViewModel)
     var selectedDocument by remember { mutableStateOf("Cedula") }
     val authState by viewModel.authState.collectAsState()
     val selectedRole = authState.userRole
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    var photoTaken by remember { mutableStateOf(false) }
+
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         if (bitmap != null) {
-            viewModel.verifyUser()
+            photoTaken = true
         }
     }
+
     Column(
         modifier = Modifier
             .background(color = colorResource(R.color.back))
@@ -211,19 +217,28 @@ fun IdentityVerification(navController: NavController, viewModel : AppViewModel)
 
             Button(
                 onClick = {
-                    viewModel.verifyUser()
+                    if (activity != null) {
+                        authenticateWithBiometrics(activity) {
+                            viewModel.verifyUser()
+                        }
+                    } else {
+                        viewModel.verifyUser()
+                    }
                 },
+                enabled = photoTaken,
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .height(52.dp),
                 shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colorResource(R.color.blue),
-                    contentColor = colorResource(R.color.white)
+                    contentColor = colorResource(R.color.white),
+                    disabledContainerColor = Color.Gray,
+                    disabledContentColor = Color.LightGray
                 )
             ) {
                 Text(
-                    "Verificar identidad",
+                    if (photoTaken) "Verificar identidad" else "Toma una foto primero",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -233,4 +248,38 @@ fun IdentityVerification(navController: NavController, viewModel : AppViewModel)
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
+
+
+fun authenticateWithBiometrics(
+    activity: FragmentActivity,
+    onSuccess: () -> Unit
+) {
+    val executor = ContextCompat.getMainExecutor(activity)
+
+    val biometricPrompt = BiometricPrompt(activity, executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                Toast.makeText(activity, "Error: $errString", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                onSuccess()
+            }
+
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                Toast.makeText(activity, "Huella no reconocida", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Verificación de Seguridad")
+        .setSubtitle("Usa tu huella digital para confirmar tu identidad")
+        .setNegativeButtonText("Cancelar")
+        .build()
+
+    biometricPrompt.authenticate(promptInfo)
 }
