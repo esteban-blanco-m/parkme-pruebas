@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.gms.google.services)
+    id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
 }
 
 android {
@@ -66,6 +67,10 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation(platform(libs.firebase.bom))
+
+    implementation("com.google.maps.android:maps-compose:6.6.0")
+    implementation("com.google.android.gms:play-services-maps:19.2.0")
+    implementation("com.google.android.gms:play-services-location:21.0.1")
 
     implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-auth-ktx")
