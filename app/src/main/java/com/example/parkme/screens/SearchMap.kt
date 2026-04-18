@@ -2,6 +2,8 @@ package com.example.parkme.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,10 +37,6 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import com.google.android.gms.maps.model.BitmapDescriptor
-
 
 @Composable
 fun SearchMap(navController: NavController) {
@@ -71,7 +69,7 @@ fun SearchMap(navController: NavController) {
 
     val defaultLocation = LatLng(4.626072, -74.071427)
 
-    // Estados para manejar la búsqueda y el parqueadero seleccionado
+    // states de bsqueda y parqueadero
     var selectedParkingLot by remember { mutableStateOf<ParkingLot?>(null) }
     var isSearching by remember { mutableStateOf(true) }
 
@@ -79,10 +77,10 @@ fun SearchMap(navController: NavController) {
         position = CameraPosition.fromLatLngZoom(defaultLocation, 15f)
     }
 
-    val carIcon = remember { resizeMapIcon(context, R.drawable.blackcar, 35, 70) }
-    val pinIcon = remember { resizeMapIcon(context, R.drawable.pinmaplogo, 45, 45) }
+    val carBitmap = remember { resizeMapIcon(context, R.drawable.blackcar, 35, 70) }
+    val pinBitmap = remember { resizeMapIcon(context, R.drawable.pinmaplogo, 45, 45) }
 
-    val infiniteTransition = rememberInfiniteTransition()
+    val infiniteTransition = rememberInfiniteTransition(label = "buscando")
     val alphaAnim by infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 1f,
@@ -93,7 +91,7 @@ fun SearchMap(navController: NavController) {
         label = "BuscandoAlpha"
     )
 
-    // 3. Cálculo del parqueadero más cercano con un retraso para simular la búsqueda
+    // Cálculo del parqueadero más cercano con un retraso para simular la búsqueda
     LaunchedEffect(defaultLocation) {
         isSearching = true
         delay(2500) // Simula 2.5 segundos de búsqueda conectando al servidor
@@ -126,24 +124,22 @@ fun SearchMap(navController: NavController) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
-            // Desactivamos la bolita azul nativa para forzar nuestro carro negro
+            // desactivar la bola pa reemplazar con el carro
             properties = MapProperties(isMyLocationEnabled = false),
             uiSettings = MapUiSettings(myLocationButtonEnabled = false)
         ) {
-
             Marker(
                 state = MarkerState(position = defaultLocation),
                 title = "Mi Ubicación",
-                icon = carIcon // Usamos la variable redimensionada
+                icon = BitmapDescriptorFactory.fromBitmap(carBitmap)
             )
 
-            // 5. Marcadores de los Parqueaderos (El Pin personalizado)
             parkingLots.forEach { parking ->
                 Marker(
                     state = MarkerState(position = parking.location),
                     title = parking.name,
                     snippet = "Cupos: ${parking.availableSpots} - Precio: ${parking.pricePerHour}",
-                    icon = pinIcon, // Usamos la variable redimensionada
+                    icon = BitmapDescriptorFactory.fromBitmap(pinBitmap),
                     onClick = {
                         selectedParkingLot = parking
                         false
@@ -151,7 +147,7 @@ fun SearchMap(navController: NavController) {
                 )
             }
 
-            // Dibuja la línea de ubicación al parqueadero más cercano (o seleccionado)
+            // linea para parqueadero mas cercano
             selectedParkingLot?.let { destination ->
                 Polyline(
                     points = listOf(defaultLocation, destination.location),
@@ -161,7 +157,6 @@ fun SearchMap(navController: NavController) {
             }
         }
 
-        // Botón de Menú Superior
         Button(
             onClick = { navController.navigate(AppScreens.SearchFilters.name) },
             colors = ButtonDefaults.buttonColors(containerColor = Color.White),
@@ -179,7 +174,6 @@ fun SearchMap(navController: NavController) {
             )
         }
 
-        // Tarjeta Inferior de Información
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -191,7 +185,7 @@ fun SearchMap(navController: NavController) {
                 .fillMaxWidth()
         ) {
             if (isSearching) {
-                // Estado: Buscando (con animación)
+                // buscando
                 Text(
                     text = buildAnnotatedString {
                         append("Buscando el ")
@@ -203,7 +197,7 @@ fun SearchMap(navController: NavController) {
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.Black,
-                    modifier = Modifier.alpha(alphaAnim) // Efecto de parpadeo suave
+                    modifier = Modifier.alpha(alphaAnim) // efecto de parpadeo suave
                 )
 
                 // Barra de progreso lineal para dar la sensación de carga
@@ -215,7 +209,6 @@ fun SearchMap(navController: NavController) {
                 )
 
             } else if (selectedParkingLot != null) {
-                // Estado: Parqueadero encontrado
                 Text(
                     text = selectedParkingLot!!.name,
                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black
@@ -250,13 +243,13 @@ fun SearchMap(navController: NavController) {
     }
 }
 
-fun resizeMapIcon(context: android.content.Context, resId: Int, widthDp: Int, heightDp: Int): BitmapDescriptor {
+// Devuelve un Bitmap nativo de Android en lugar de BitmapDescriptor
+fun resizeMapIcon(context: android.content.Context, resId: Int, widthDp: Int, heightDp: Int): Bitmap {
     val density = context.resources.displayMetrics.density
     val widthPx = (widthDp * density).toInt()
     val heightPx = (heightDp * density).toInt()
 
     val imageBitmap = BitmapFactory.decodeResource(context.resources, resId)
-    val resizedBitmap = Bitmap.createScaledBitmap(imageBitmap, widthPx, heightPx, false)
-
-    return BitmapDescriptorFactory.fromBitmap(resizedBitmap)
+    // Se devuelve el Bitmap redimensionado de forma cruda, sin tocar Google Maps aún
+    return Bitmap.createScaledBitmap(imageBitmap, widthPx, heightPx, false)
 }
