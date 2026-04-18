@@ -1,6 +1,7 @@
 package com.example.parkme.screens
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import android.util.Log
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
@@ -37,21 +39,27 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import com.google.maps.android.PolyUtil
 
+@SuppressLint("UnrememberedMutableState")
 @Composable
 fun SearchMap(navController: NavController) {
     val context = LocalContext.current
 
     var hasLocationPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
         )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted -> hasLocationPermission = isGranted }
-    )
+        onResult = { isGranted -> hasLocationPermission = isGranted })
 
     LaunchedEffect(Unit) {
         if (!hasLocationPermission) {
@@ -69,9 +77,10 @@ fun SearchMap(navController: NavController) {
 
     val defaultLocation = LatLng(4.626072, -74.071427)
 
-    // states de bsqueda y parqueadero
+    // states de busqueda, parqueadero y rutas
     var selectedParkingLot by remember { mutableStateOf<ParkingLot?>(null) }
     var isSearching by remember { mutableStateOf(true) }
+    var routePoints by remember { mutableStateOf<List<LatLng>?>(null) }
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(defaultLocation, 15f)
@@ -82,29 +91,27 @@ fun SearchMap(navController: NavController) {
 
     val infiniteTransition = rememberInfiniteTransition(label = "buscando")
     val alphaAnim by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "BuscandoAlpha"
+        initialValue = 0.3f, targetValue = 1f, animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse
+        ), label = "BuscandoAlpha"
     )
 
-    // Cálculo del parqueadero más cercano con un retraso para simular la búsqueda
+    // calcular ruta mas cercana
     LaunchedEffect(defaultLocation) {
         isSearching = true
-        delay(2500) // Simula 2.5 segundos de búsqueda conectando al servidor
+        routePoints = null
+        delay(2500)
 
         var minDistance = Float.MAX_VALUE
         var closest: ParkingLot? = null
 
-        // Calcular la distancia usando la librería nativa de Location
         for (parking in parkingLots) {
             val results = FloatArray(1)
             Location.distanceBetween(
-                defaultLocation.latitude, defaultLocation.longitude,
-                parking.location.latitude, parking.location.longitude,
+                defaultLocation.latitude,
+                defaultLocation.longitude,
+                parking.location.latitude,
+                parking.location.longitude,
                 results
             )
             if (results[0] < minDistance) {
@@ -114,12 +121,22 @@ fun SearchMap(navController: NavController) {
         }
 
         selectedParkingLot = closest
+
+        if (closest != null) {
+            val applicationInfo = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+            val apiKey = applicationInfo.metaData.getString("com.google.android.geo.API_KEY") ?: ""
+            // consumir la api
+            routePoints = fetchRouteFromGoogle(defaultLocation, closest.location, apiKey)
+        }
+
         isSearching = false
     }
 
-    Box(modifier = Modifier
-        .background(colorResource(R.color.back))
-        .fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .background(colorResource(R.color.back))
+            .fillMaxSize()
+    ) {
 
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
@@ -142,17 +159,18 @@ fun SearchMap(navController: NavController) {
                     icon = BitmapDescriptorFactory.fromBitmap(pinBitmap),
                     onClick = {
                         selectedParkingLot = parking
+
                         false
-                    }
-                )
+                    })
             }
 
-            // linea para parqueadero mas cercano
-            selectedParkingLot?.let { destination ->
+            // dibujar la ruta
+            routePoints?.let { points ->
                 Polyline(
-                    points = listOf(defaultLocation, destination.location),
-                    color = Color(0xFF0056D2),
-                    width = 12f
+                    points = points,
+                    color = colorResource(R.color.azulruta),
+                    width = 12f,
+                    geodesic = true
                 )
             }
         }
@@ -168,9 +186,7 @@ fun SearchMap(navController: NavController) {
             contentPadding = PaddingValues(0.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Menu,
-                contentDescription = "Menú",
-                tint = Color.Black
+                imageVector = Icons.Default.Menu, contentDescription = "Menú", tint = Color.Black
             )
         }
 
@@ -189,7 +205,11 @@ fun SearchMap(navController: NavController) {
                 Text(
                     text = buildAnnotatedString {
                         append("Buscando el ")
-                        withStyle(style = SpanStyle(color = colorResource(R.color.blue), fontWeight = FontWeight.Bold)) {
+                        withStyle(
+                            style = SpanStyle(
+                                color = colorResource(R.color.blue), fontWeight = FontWeight.Bold
+                            )
+                        ) {
                             append("parqueadero más cercano")
                         }
                         append("...")
@@ -199,8 +219,7 @@ fun SearchMap(navController: NavController) {
                     color = Color.Black,
                     modifier = Modifier.alpha(alphaAnim) // efecto de parpadeo suave
                 )
-
-                // Barra de progreso lineal para dar la sensación de carga
+                // barra falsa
                 LinearProgressIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -211,11 +230,15 @@ fun SearchMap(navController: NavController) {
             } else if (selectedParkingLot != null) {
                 Text(
                     text = selectedParkingLot!!.name,
-                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
                 )
                 Text(
                     text = "Cupos disponibles: ${selectedParkingLot!!.availableSpots} | Tarifa: ${selectedParkingLot!!.pricePerHour}",
-                    fontSize = 16.sp, color = Color.DarkGray, modifier = Modifier.padding(top = 8.dp)
+                    fontSize = 16.sp,
+                    color = Color.DarkGray,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
                 Button(
                     onClick = { navController.navigate(AppScreens.ParkingLotDetail.name) },
@@ -243,13 +266,55 @@ fun SearchMap(navController: NavController) {
     }
 }
 
-// Devuelve un Bitmap nativo de Android en lugar de BitmapDescriptor
-fun resizeMapIcon(context: android.content.Context, resId: Int, widthDp: Int, heightDp: Int): Bitmap {
+
+// devuelve mis iconos propios
+fun resizeMapIcon(
+    context: android.content.Context, resId: Int, widthDp: Int, heightDp: Int
+): Bitmap {
     val density = context.resources.displayMetrics.density
     val widthPx = (widthDp * density).toInt()
     val heightPx = (heightDp * density).toInt()
 
     val imageBitmap = BitmapFactory.decodeResource(context.resources, resId)
-    // Se devuelve el Bitmap redimensionado de forma cruda, sin tocar Google Maps aún
     return Bitmap.createScaledBitmap(imageBitmap, widthPx, heightPx, false)
+}
+
+suspend fun fetchRouteFromGoogle(
+    origin: LatLng, destination: LatLng, apiKey: String
+): List<LatLng>? {
+    return withContext(Dispatchers.IO) {
+        try {
+            Log.d("MAPS_DEBUG", "API Key leída: $apiKey")
+
+            val url = "https://maps.googleapis.com/maps/api/directions/json" +
+                    "?origin=${origin.latitude},${origin.longitude}" +
+                    "&destination=${destination.latitude},${destination.longitude}" +
+                    "&key=$apiKey"
+
+           // peticion
+            val response = java.net.URL(url).readText()
+            Log.d("MAPS_DEBUG", "Respuesta JSON: $response")
+
+            val jsonObject = JSONObject(response)
+
+            // 4. Verificamos el estado
+            val status = jsonObject.getString("status")
+            if (status != "OK") {
+                val errorMessage = jsonObject.optString("error_message", "Sin mensaje de error")
+                Log.e("MAPS_DEBUG", "Google denegó la petición. Estado: $status - Razón: $errorMessage")
+                return@withContext null
+            }
+
+            val routesArray = jsonObject.getJSONArray("routes")
+            if (routesArray.length() > 0) {
+                val route = routesArray.getJSONObject(0)
+                val polylineEncoded = route.getJSONObject("overview_polyline").getString("points")
+                return@withContext PolyUtil.decode(polylineEncoded)
+            }
+        } catch (e: Exception) {
+            Log.e("MAPS_DEBUG", "Error de conexión/código: ${e.message}")
+            e.printStackTrace()
+        }
+        return@withContext null
+    }
 }
