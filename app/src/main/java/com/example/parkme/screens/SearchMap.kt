@@ -2,8 +2,10 @@ package com.example.parkme.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
@@ -27,9 +30,15 @@ import androidx.navigation.NavController
 import com.example.parkme.R
 import com.example.parkme.models.ParkingLot
 import com.example.parkme.navigation.AppScreens
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
+import kotlinx.coroutines.delay
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.google.android.gms.maps.model.BitmapDescriptor
+
 
 @Composable
 fun SearchMap(navController: NavController) {
@@ -52,7 +61,6 @@ fun SearchMap(navController: NavController) {
         }
     }
 
-  //aca toca cambiar esto con lo de firebase, cuando este ya toodo good pq los paqrquederos deben estar guardados en un directorio del json
     val parkingLots = remember {
         listOf(
             ParkingLot("1", "Parqueadero Javeriana", LatLng(4.627293, -74.063228), "$4.000", 12),
@@ -61,11 +69,54 @@ fun SearchMap(navController: NavController) {
         )
     }
 
-    // estado de la seleccion y ubicacion
+    val defaultLocation = LatLng(4.626072, -74.071427)
+
+    // Estados para manejar la búsqueda y el parqueadero seleccionado
     var selectedParkingLot by remember { mutableStateOf<ParkingLot?>(null) }
-    val defaultLocation = LatLng(4.627293, -74.063228)
+    var isSearching by remember { mutableStateOf(true) }
+
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLocation, 14f)
+        position = CameraPosition.fromLatLngZoom(defaultLocation, 15f)
+    }
+
+    val carIcon = remember { resizeMapIcon(context, R.drawable.blackcar, 35, 70) }
+    val pinIcon = remember { resizeMapIcon(context, R.drawable.pinmaplogo, 45, 45) }
+
+    val infiniteTransition = rememberInfiniteTransition()
+    val alphaAnim by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "BuscandoAlpha"
+    )
+
+    // 3. Cálculo del parqueadero más cercano con un retraso para simular la búsqueda
+    LaunchedEffect(defaultLocation) {
+        isSearching = true
+        delay(2500) // Simula 2.5 segundos de búsqueda conectando al servidor
+
+        var minDistance = Float.MAX_VALUE
+        var closest: ParkingLot? = null
+
+        // Calcular la distancia usando la librería nativa de Location
+        for (parking in parkingLots) {
+            val results = FloatArray(1)
+            Location.distanceBetween(
+                defaultLocation.latitude, defaultLocation.longitude,
+                parking.location.latitude, parking.location.longitude,
+                results
+            )
+            if (results[0] < minDistance) {
+                minDistance = results[0]
+                closest = parking
+            }
+        }
+
+        selectedParkingLot = closest
+        isSearching = false
     }
 
     Box(modifier = Modifier
@@ -75,22 +126,32 @@ fun SearchMap(navController: NavController) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
-            // loc en tiempo real
-            properties = MapProperties(isMyLocationEnabled = hasLocationPermission),
-            uiSettings = MapUiSettings(myLocationButtonEnabled = true)
+            // Desactivamos la bolita azul nativa para forzar nuestro carro negro
+            properties = MapProperties(isMyLocationEnabled = false),
+            uiSettings = MapUiSettings(myLocationButtonEnabled = false)
         ) {
-            //iterar sobre la lista dinámica para crear los marcadores
+
+            Marker(
+                state = MarkerState(position = defaultLocation),
+                title = "Mi Ubicación",
+                icon = carIcon // Usamos la variable redimensionada
+            )
+
+            // 5. Marcadores de los Parqueaderos (El Pin personalizado)
             parkingLots.forEach { parking ->
                 Marker(
                     state = MarkerState(position = parking.location),
                     title = parking.name,
                     snippet = "Cupos: ${parking.availableSpots} - Precio: ${parking.pricePerHour}",
+                    icon = pinIcon, // Usamos la variable redimensionada
                     onClick = {
                         selectedParkingLot = parking
+                        false
                     }
                 )
             }
 
+            // Dibuja la línea de ubicación al parqueadero más cercano (o seleccionado)
             selectedParkingLot?.let { destination ->
                 Polyline(
                     points = listOf(defaultLocation, destination.location),
@@ -100,6 +161,7 @@ fun SearchMap(navController: NavController) {
             }
         }
 
+        // Botón de Menú Superior
         Button(
             onClick = { navController.navigate(AppScreens.SearchFilters.name) },
             colors = ButtonDefaults.buttonColors(containerColor = Color.White),
@@ -117,6 +179,7 @@ fun SearchMap(navController: NavController) {
             )
         }
 
+        // Tarjeta Inferior de Información
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -127,22 +190,32 @@ fun SearchMap(navController: NavController) {
                 .padding(24.dp)
                 .fillMaxWidth()
         ) {
-            if (selectedParkingLot == null) {
-                // state: searching
+            if (isSearching) {
+                // Estado: Buscando (con animación)
                 Text(
                     text = buildAnnotatedString {
-                        append("Buscando tu ")
+                        append("Buscando el ")
                         withStyle(style = SpanStyle(color = colorResource(R.color.blue), fontWeight = FontWeight.Bold)) {
-                            append("estacionamiento")
+                            append("parqueadero más cercano")
                         }
-                    }, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.Black
+                        append("...")
+                    },
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Black,
+                    modifier = Modifier.alpha(alphaAnim) // Efecto de parpadeo suave
                 )
-                Text(
-                    text = "Selecciona un parqueadero en el mapa...",
-                    fontSize = 16.sp, color = Color.Gray, modifier = Modifier.padding(top = 8.dp)
+
+                // Barra de progreso lineal para dar la sensación de carga
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    color = colorResource(R.color.blue)
                 )
-            } else {
-                // state: parkme located
+
+            } else if (selectedParkingLot != null) {
+                // Estado: Parqueadero encontrado
                 Text(
                     text = selectedParkingLot!!.name,
                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black
@@ -152,24 +225,38 @@ fun SearchMap(navController: NavController) {
                     fontSize = 16.sp, color = Color.DarkGray, modifier = Modifier.padding(top = 8.dp)
                 )
                 Button(
-
                     onClick = { navController.navigate(AppScreens.ParkingLotDetail.name) },
                     colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.blue)),
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
                     shape = RoundedCornerShape(50)
                 ) {
-                    Text("Ver Detalles del Parqueadero", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Ver Detalles", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
 
             Button(
                 onClick = { navController.navigate(AppScreens.HomeUser.name) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = if (isSearching) 24.dp else 12.dp),
                 shape = RoundedCornerShape(50)
             ) {
                 Text(text = "Cancelar búsqueda", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
     }
+}
+
+fun resizeMapIcon(context: android.content.Context, resId: Int, widthDp: Int, heightDp: Int): BitmapDescriptor {
+    val density = context.resources.displayMetrics.density
+    val widthPx = (widthDp * density).toInt()
+    val heightPx = (heightDp * density).toInt()
+
+    val imageBitmap = BitmapFactory.decodeResource(context.resources, resId)
+    val resizedBitmap = Bitmap.createScaledBitmap(imageBitmap, widthPx, heightPx, false)
+
+    return BitmapDescriptorFactory.fromBitmap(resizedBitmap)
 }
