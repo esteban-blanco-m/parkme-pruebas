@@ -20,7 +20,6 @@ enum class AppScreens {
     SignUp,
     IdentityVerification,
     SearchMap,
-    SearchFilters,
     ParkingLotDetail,
     RateParkingLot,
     MyActivity,
@@ -76,7 +75,6 @@ fun Navigation() {
         composable(AppScreens.HomeUser.name) { HomeUser(navController) }
         composable(AppScreens.HomeOperator.name) { HomeOperator(navController) }
         composable(AppScreens.SearchMap.name) { SearchMap(navController) }
-        composable(AppScreens.SearchFilters.name) { SearchFilters() }
         composable(AppScreens.RateParkingLot.name) { RateParkingLot(navController) }
         composable(AppScreens.MyActivity.name) { MyActivity(navController) }
         composable(AppScreens.UserProfile.name) { ProfileScreen(navController, viewModel) }

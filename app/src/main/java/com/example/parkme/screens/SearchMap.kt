@@ -12,6 +12,7 @@ import android.location.Location
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,12 +59,14 @@ import org.json.JSONObject
 import com.google.maps.android.PolyUtil
 import com.google.maps.android.SphericalUtil
 
+// para los iconos de cada celular, que no se vean blancos
 fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnrememberedMutableState")
 @Composable
 fun SearchMap(navController: NavController) {
@@ -109,7 +113,17 @@ fun SearchMap(navController: NavController) {
         )
     }
 
-    val nearbyParkingLots = remember(defaultLocation) {
+    // estados de los filtros
+    var showFilters by remember { mutableStateOf(false) }
+    var filtersActive by remember { mutableStateOf(false) }
+    var tempMaxDistance by remember { mutableStateOf(2000f) }
+    var tempMaxPrice by remember { mutableStateOf(10000f) }
+    var tempNeedElectric by remember { mutableStateOf(false) }
+    var appliedMaxDistance by remember { mutableStateOf(2000f) }
+    var appliedMaxPrice by remember { mutableStateOf(10000f) }
+    var appliedNeedElectric by remember { mutableStateOf(false) }
+
+    val nearbyParkingLots = remember(defaultLocation, filtersActive, appliedMaxDistance, appliedMaxPrice, appliedNeedElectric) {
         allParkingLots.map { parking ->
             val results = FloatArray(1)
             Location.distanceBetween(
@@ -119,7 +133,20 @@ fun SearchMap(navController: NavController) {
             )
             parking to results[0]
         }
-            .filter { it.second <= 2000f }
+            .filter { item ->
+                val dist = item.second
+                val parking = item.first
+                val price = parking.pricePerHour.replace("$", "").replace(".", "").trim().toFloatOrNull() ?: 0f
+
+                if (filtersActive) {
+                    val matchesDist = dist <= appliedMaxDistance
+                    val matchesPrice = price <= appliedMaxPrice
+                    val matchesElectric = if (appliedNeedElectric) parking.electricCharges else true
+                    matchesDist && matchesPrice && matchesElectric
+                } else {
+                    dist <= 2000f // max 2 km por default
+                }
+            }
             .sortedBy { it.second }
             .map { it.first }
     }
@@ -239,7 +266,7 @@ fun SearchMap(navController: NavController) {
             }
         }
         Button(
-            onClick = { navController.navigate(AppScreens.SearchFilters.name) },
+            onClick = { showFilters = true }, // abrimos el panel de filtros
             colors = ButtonDefaults.buttonColors(containerColor = Color.White),
             modifier = Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 38.dp).size(50.dp),
             shape = RoundedCornerShape(28),
@@ -329,21 +356,31 @@ fun SearchMap(navController: NavController) {
                     }
                 }
             } else {
-                Text(text = "Parqueaderos Cercanos", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "Parqueaderos Cercanos", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    if (filtersActive) {
+                        Text(text = "Filtros Activos", fontSize = 12.sp, color = colorResource(R.color.blue), fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
 
-                LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(nearbyParkingLots) { parking ->
-                        val distance = calculateDistance(defaultLocation, parking.location)
-                        Card(
-                            modifier = Modifier.fillMaxWidth().clickable { selectedForDetails = parking },
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(text = parking.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(text = "Hora: ${parking.pricePerHour}", fontSize = 14.sp, color = Color.DarkGray)
-                                Text(text = "Distancia: $distance", fontSize = 14.sp, color = colorResource(R.color.blue))
+                if (nearbyParkingLots.isEmpty()) {
+                    Text("No hay parqueaderos que cumplan tus filtros.", color = Color.Gray, modifier = Modifier.padding(vertical = 20.dp))
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(nearbyParkingLots) { parking ->
+                            val distance = calculateDistance(defaultLocation, parking.location)
+                            Card(
+                                modifier = Modifier.fillMaxWidth().clickable { selectedForDetails = parking },
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(text = parking.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = "Hora: ${parking.pricePerHour}", fontSize = 14.sp, color = Color.DarkGray)
+                                    Text(text = "Distancia: $distance", fontSize = 14.sp, color = colorResource(R.color.blue))
+                                }
                             }
                         }
                     }
@@ -355,6 +392,86 @@ fun SearchMap(navController: NavController) {
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     shape = RoundedCornerShape(50)
                 ) { Text(text = "Salir", color = Color.White, fontWeight = FontWeight.Bold) }
+            }
+        }
+
+        // fondo oscuro de los filtros
+        if (showFilters) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { showFilters = false })
+        }
+
+        // panel lateral de filtros
+        AnimatedVisibility(
+            visible = showFilters,
+            enter = slideInHorizontally(initialOffsetX = { -it }),
+            exit = slideOutHorizontally(targetOffsetX = { -it })
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.85f)
+                    .background(Color.White)
+                    .padding(top = 64.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                    Text("Filtros", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.align(Alignment.Center))
+                    IconButton(onClick = { showFilters = false }, modifier = Modifier.align(Alignment.CenterEnd)) { Icon(Icons.Default.Close, "Cerrar", tint = Color.Black) }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text("Distancia Máxima: ${tempMaxDistance.toInt()} m", fontWeight = FontWeight.Bold, color = Color.Black)
+                Slider(
+                    value = tempMaxDistance, onValueChange = { tempMaxDistance = it },
+                    valueRange = 500f..5000f, steps = 8,
+                    colors = SliderDefaults.colors(thumbColor = colorResource(R.color.blue), activeTrackColor = colorResource(R.color.blue))
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text("Precio por Hora (Max): $${tempMaxPrice.toInt()}", fontWeight = FontWeight.Bold, color = Color.Black)
+                Slider(
+                    value = tempMaxPrice, onValueChange = { tempMaxPrice = it },
+                    valueRange = 2000f..20000f, steps = 35,
+                    colors = SliderDefaults.colors(thumbColor = colorResource(R.color.blue), activeTrackColor = colorResource(R.color.blue))
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Requiere Carga Eléctrica", fontWeight = FontWeight.Bold, color = Color.Black)
+                    Switch(
+                        checked = tempNeedElectric, onCheckedChange = { tempNeedElectric = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colorResource(R.color.blue))
+                    )
+                }
+                Spacer(modifier = Modifier.height(40.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = {
+                            filtersActive = false
+                            tempMaxDistance = 2000f
+                            tempMaxPrice = 10000f
+                            tempNeedElectric = false
+                            showFilters = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Limpiar", color = Color.Black) }
+
+                    Button(
+                        onClick = {
+                            appliedMaxDistance = tempMaxDistance
+                            appliedMaxPrice = tempMaxPrice
+                            appliedNeedElectric = tempNeedElectric
+                            filtersActive = true
+                            showFilters = false
+                            selectedForDetails = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.blue)),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Aplicar", color = Color.White, fontWeight = FontWeight.Bold) }
+                }
             }
         }
     }
