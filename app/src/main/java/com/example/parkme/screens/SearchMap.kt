@@ -368,7 +368,7 @@ fun calculateDistance(start: LatLng, end: LatLng): String {
     return if (distanceInMeters > 1000) String.format("%.1f km", distanceInMeters / 1000) else "${distanceInMeters.toInt()} m"
 }
 
-// efectos visuales del icono de carro
+// efectos visuales del icono de carro en google maps
 fun resizeMapIcon(context: android.content.Context, resId: Int, widthDp: Int, heightDp: Int): Bitmap {
     val density = context.resources.displayMetrics.density
     val widthPx = (widthDp * density).toInt()
