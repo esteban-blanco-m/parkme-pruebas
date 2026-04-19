@@ -6,6 +6,13 @@ data class ParkingLot(
     val id: String,
     val name: String,
     val location: LatLng,
+    val pricePerMin: String,
     val pricePerHour: String,
-    val availableSpots: Int
+    val fixedPrice: String,
+    val terms: String,
+    val electricCharges: Boolean,
+    val hourStart: String,
+    val hourFinish: String,
+    val weekAvailability: String,
+    val slot: Int
 )
